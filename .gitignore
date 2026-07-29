@@ -1,0 +1,11 @@
+.omx/
+.codex/
+node_modules/
+dist/
+coverage/
+supabase/.temp/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
