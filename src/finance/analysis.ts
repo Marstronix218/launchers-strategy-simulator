@@ -1,4 +1,5 @@
 import type {
+  BusinessRiskAssessment,
   CompanyBaseline,
   GoalSolution,
   GoalTargets,
@@ -178,6 +179,133 @@ export function deriveStrategyActions(
     priority: "中",
   });
   return actions;
+}
+
+function riskLevel(score: number): BusinessRiskAssessment["level"] {
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
+  return "low";
+}
+
+export function assessBusinessRisk(
+  result: ReturnType<typeof forecastScenario>,
+  targetRevenue: number,
+): BusinessRiskAssessment {
+  const year5 = result.rows[Math.min(4, result.rows.length - 1)];
+  const cashShortfall = result.rows.find((row) => row.endingCash < 0);
+  const annualCashOperatingCost = Math.max(
+    1,
+    year5.variableCogs +
+      year5.fixedManufacturingCost +
+      year5.personnelCost +
+      year5.sga,
+  );
+  const cashRunwayMonths = Math.max(
+    0,
+    (Math.max(0, result.kpis.minimumCash) / annualCashOperatingCost) * 12,
+  );
+  const cashScore =
+    result.kpis.minimumCash < 0
+      ? 100
+      : cashRunwayMonths < 1
+        ? 85
+        : cashRunwayMonths < 3
+          ? 65
+          : cashRunwayMonths < 6
+            ? 40
+            : 15;
+
+  const personnelRate = year5.personnelCost / Math.max(1, year5.revenue);
+  const personnelScore =
+    personnelRate >= 0.35
+      ? 90
+      : personnelRate >= 0.28
+        ? 70
+        : personnelRate >= 0.22
+          ? 45
+          : 20;
+
+  const growthGapRate = Math.max(
+    0,
+    (targetRevenue - year5.revenue) / Math.max(1, targetRevenue),
+  );
+  const growthScore =
+    growthGapRate >= 0.25
+      ? 90
+      : growthGapRate >= 0.15
+        ? 70
+        : growthGapRate >= 0.05
+          ? 45
+          : 15;
+
+  const indicators: BusinessRiskAssessment["indicators"] = [
+    {
+      id: "cash",
+      label: "資金繰り",
+      score: cashScore,
+      weight: 0.45,
+      level: riskLevel(cashScore),
+      value:
+        result.kpis.minimumCash < 0
+          ? `${cashShortfall?.year ?? "予測期間内"}年度に資金ショート`
+          : `最低現金 ${Math.round(result.kpis.minimumCash / 100_000_000)}億円`,
+      summary:
+        result.kpis.minimumCash < 0
+          ? "営業・投資・返済後の現金残高がマイナスになります。"
+          : `最低時点の運転余力は概算${cashRunwayMonths.toFixed(1)}か月です。`,
+      action:
+        result.kpis.minimumCash < 0
+          ? "借入枠、投資時期、回収サイトを同時に見直す"
+          : "月次で最低現金ラインを監視する",
+    },
+    {
+      id: "personnel",
+      label: "人件費負担",
+      score: personnelScore,
+      weight: 0.3,
+      level: riskLevel(personnelScore),
+      value: `5年後売上比 ${(personnelRate * 100).toFixed(1)}%`,
+      summary:
+        personnelScore >= 70
+          ? "賃上げと採用による固定費増が利益成長を圧迫します。"
+          : "売上成長に対する人件費の伸びは管理可能な範囲です。",
+      action:
+        personnelScore >= 70
+          ? "採用計画を粗利・生産性目標と連動させる"
+          : "一人当たり粗利を四半期ごとに確認する",
+    },
+    {
+      id: "growth",
+      label: "成長率ギャップ",
+      score: growthScore,
+      weight: 0.25,
+      level: riskLevel(growthScore),
+      value: `目標まで ${Math.round(Math.max(0, targetRevenue - year5.revenue) / 100_000_000)}億円`,
+      summary:
+        growthGapRate >= 0.05
+          ? `5年後目標に対して${(growthGapRate * 100).toFixed(1)}%不足します。`
+          : "現行シナリオは5年後売上目標に概ね到達します。",
+      action:
+        growthGapRate >= 0.05
+          ? "価格・数量・新規事業を分けて不足額を積み上げる"
+          : "利益とキャッシュを守れる成長構成か確認する",
+    },
+  ];
+  const score = Math.round(
+    indicators.reduce(
+      (total, indicator) => total + indicator.score * indicator.weight,
+      0,
+    ),
+  );
+  const level = riskLevel(score);
+
+  return {
+    score,
+    level,
+    label: level === "high" ? "要対策" : level === "medium" ? "注意" : "安定",
+    cashShortfallYear: cashShortfall?.year ?? null,
+    indicators,
+  };
 }
 
 export function assessIndia(inputs: IndiaInputs, baseYear: number): IndiaAssessment {

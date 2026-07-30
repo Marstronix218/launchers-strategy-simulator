@@ -177,6 +177,27 @@ export interface StrategyAction {
   priority: "最優先" | "高" | "中";
 }
 
+export type RiskLevel = "low" | "medium" | "high";
+
+export interface RiskIndicator {
+  id: "cash" | "personnel" | "growth";
+  label: string;
+  score: number;
+  weight: number;
+  level: RiskLevel;
+  value: string;
+  summary: string;
+  action: string;
+}
+
+export interface BusinessRiskAssessment {
+  score: number;
+  level: RiskLevel;
+  label: string;
+  cashShortfallYear: number | null;
+  indicators: RiskIndicator[];
+}
+
 export interface IndiaInputs {
   preparationYears: number;
   initialSetupCost: number;

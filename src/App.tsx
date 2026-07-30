@@ -72,6 +72,7 @@ import {
   sampleProfile,
 } from "./data/sample";
 import {
+  assessBusinessRisk,
   assessIndia,
   deriveStrategyActions,
   goalSeek,
@@ -107,6 +108,7 @@ import {
 import type { AIInsight, AIReviewMode } from "./ai/schema";
 
 type Screen =
+  | "diagnosis"
   | "setup"
   | "import"
   | "historical"
@@ -117,6 +119,14 @@ type Screen =
   | "gap"
   | "india"
   | "export";
+
+type Brand = "launchers" | "go-india" | "india-biz";
+
+const brandLabels: Record<Brand, { name: string; short: string }> = {
+  launchers: { name: "Capital Launchers", short: "Launchers" },
+  "go-india": { name: "Go India", short: "Go India" },
+  "india-biz": { name: "インドビズ", short: "インドビズ" },
+};
 
 const navGroups: Array<{
   label: string;
@@ -129,6 +139,7 @@ const navGroups: Array<{
   {
     label: "準備",
     items: [
+      { id: "diagnosis", label: "無料簡易診断", icon: CircleGauge },
       { id: "setup", label: "プロジェクト設定", icon: Building2 },
       { id: "import", label: "データ取込", icon: Database },
       { id: "historical", label: "過去実績", icon: BarChart3 },
@@ -154,6 +165,11 @@ const navGroups: Array<{
 ];
 
 const screenTitles: Record<Screen, { eyebrow: string; title: string; description: string }> = {
+  diagnosis: {
+    eyebrow: "Free business diagnosis · β",
+    title: "経営の危険信号を、3分で可視化",
+    description: "確定計算による5年・10年予測と、3指標の危険度を確認します。",
+  },
   setup: {
     eyebrow: "Project setup",
     title: "診断プロジェクトを設定",
@@ -324,7 +340,8 @@ function EmptyState({
 
 function App() {
   const auth = useAuth();
-  const [screen, setScreen] = useState<Screen>("insights");
+  const [screen, setScreen] = useState<Screen>("diagnosis");
+  const [brand, setBrand] = useState<Brand>("launchers");
   const [sidebarOpen, setSidebarOpen] = useState(
     () => window.innerWidth > 1100,
   );
@@ -421,6 +438,10 @@ function App() {
   const actions = useMemo(
     () => deriveStrategyActions(asIsResult, targetResult),
     [asIsResult, targetResult],
+  );
+  const businessRisk = useMemo(
+    () => assessBusinessRisk(asIsResult, goalTargets.year5Revenue),
+    [asIsResult, goalTargets.year5Revenue],
   );
   const indiaAssessment = useMemo(
     () => assessIndia(indiaInputs, profile.baseYear),
@@ -617,7 +638,7 @@ function App() {
         <div className="brand">
           <div className="brand-mark">L</div>
           <div className="brand-copy">
-            <strong>Launchers</strong>
+            <strong>{brandLabels[brand].short}</strong>
             <span>Strategy Simulator</span>
           </div>
           <button
@@ -799,6 +820,18 @@ function App() {
 
           {screen === "setup" && (
             <SetupScreen profile={profile} updateProfile={updateProfile} />
+          )}
+          {screen === "diagnosis" && (
+            <DiagnosisScreen
+              brand={brand}
+              setBrand={setBrand}
+              profile={profile}
+              baseline={baseline}
+              result={asIsResult}
+              risk={businessRisk}
+              targetRevenue={goalTargets.year5Revenue}
+              setScreen={setScreen}
+            />
           )}
           {screen === "import" && (
             <ImportScreen
@@ -994,6 +1027,223 @@ function AIReviewDrawer({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function DiagnosisScreen({
+  brand,
+  setBrand,
+  profile,
+  baseline,
+  result,
+  risk,
+  targetRevenue,
+  setScreen,
+}: {
+  brand: Brand;
+  setBrand: (brand: Brand) => void;
+  profile: CompanyProfile;
+  baseline: CompanyBaseline;
+  result: ReturnType<typeof forecastScenario>;
+  risk: ReturnType<typeof assessBusinessRisk>;
+  targetRevenue: number;
+  setScreen: (screen: Screen) => void;
+}) {
+  const riskIcons = {
+    cash: WalletCards,
+    personnel: UsersRound,
+    growth: TrendingUp,
+  };
+  const chartData = result.rows.map((row) => ({
+    year: String(row.year),
+    revenue: Math.round(row.revenue / 100_000_000),
+    cash: Math.round(row.endingCash / 100_000_000),
+  }));
+  const year5 = result.rows[Math.min(4, result.rows.length - 1)];
+
+  return (
+    <div className="diagnosis-stack">
+      <section className="diagnosis-hero">
+        <div className="diagnosis-hero-copy">
+          <div className="beta-line">
+            <span className="beta-badge">2026年10月 β</span>
+            <label className="brand-switcher">
+              <span>表示ブランド</span>
+              <select
+                value={brand}
+                onChange={(event) => setBrand(event.target.value as Brand)}
+              >
+                {Object.entries(brandLabels).map(([id, item]) => (
+                  <option key={id} value={id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <span className="diagnosis-kicker">{brandLabels[brand].name} AI事業計画診断</span>
+          <h2>{profile.name}の<br />経営リスクを診断しました</h2>
+          <p>
+            過去実績と承認済み前提から、将来の資金・人員・成長ギャップを
+            同じ計算式で判定しています。
+          </p>
+          <div className="diagnosis-actions">
+            <button className="button diagnosis-primary" onClick={() => setScreen("setup")}>
+              <ClipboardList size={16} /> 入力内容を確認
+            </button>
+            <button className="button diagnosis-secondary" onClick={() => setScreen("export")}>
+              <FileOutput size={16} /> レポートを見る
+            </button>
+          </div>
+          <small><ShieldCheck size={13} /> AIは財務数値を再計算しません。確定計算の解釈にのみ使用します。</small>
+        </div>
+        <div className={`risk-score-card ${risk.level}`}>
+          <span>総合危険度</span>
+          <div
+            className="risk-score-ring"
+            style={{ "--risk-score": `${risk.score * 3.6}deg` } as React.CSSProperties}
+          >
+            <div><strong>{risk.score}</strong><small>/ 100</small></div>
+          </div>
+          <b>{risk.label}</b>
+          <p>
+            {risk.level === "high"
+              ? "資金対策を最優先で具体化してください。"
+              : risk.level === "medium"
+                ? "成長と固定費のバランスに注意が必要です。"
+                : "現時点で重大な危険信号はありません。"}
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div className="diagnosis-section-heading">
+          <div>
+            <span>Risk ranking</span>
+            <h2>優先して見るべき3つの危険信号</h2>
+          </div>
+          <p>資金45% · 人件費30% · 成長ギャップ25%</p>
+        </div>
+        <div className="risk-grid">
+          {[...risk.indicators]
+            .sort((a, b) => b.score - a.score)
+            .map((indicator, index) => {
+              const Icon = riskIcons[indicator.id];
+              return (
+                <article className={`risk-card ${indicator.level}`} key={indicator.id}>
+                  <div className="risk-card-top">
+                    <span className="risk-rank">0{index + 1}</span>
+                    <div className="risk-icon"><Icon size={20} /></div>
+                    <span className="risk-level">{indicator.level === "high" ? "高" : indicator.level === "medium" ? "中" : "低"}</span>
+                  </div>
+                  <h3>{indicator.label}</h3>
+                  <strong>{indicator.value}</strong>
+                  <p>{indicator.summary}</p>
+                  <div className="risk-action"><ArrowRight size={14} /> {indicator.action}</div>
+                </article>
+              );
+            })}
+        </div>
+      </section>
+
+      <div className="diagnosis-two-column">
+        <section className="panel diagnosis-chart-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">5 / 10 year forecast</span>
+              <h2>売上と期末現金の見通し</h2>
+            </div>
+            <span className="unit-caption">億円</span>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={chartData}>
+              <defs>
+                <linearGradient id="diagnosisRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#c92f3e" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#c92f3e" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#eee5e3" vertical={false} />
+              <XAxis dataKey="year" tickLine={false} axisLine={false} />
+              <YAxis tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Area type="monotone" dataKey="revenue" name="売上" stroke="#c92f3e" fill="url(#diagnosisRevenue)" strokeWidth={3} />
+              <Line type="monotone" dataKey="cash" name="期末現金" stroke="#4f718f" strokeWidth={2} dot={false} />
+              <ReferenceLine y={0} stroke="#d1495b" strokeDasharray="4 4" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </section>
+        <section className="panel gap-summary-panel">
+          <span className="section-kicker">Ideal → reality</span>
+          <h2>5年後の目標ギャップ</h2>
+          <div className="gap-big-number">
+            <span>売上不足額</span>
+            <strong>{formatYen(Math.max(0, targetRevenue - year5.revenue))}</strong>
+          </div>
+          <dl>
+            <div><dt>5年後予測</dt><dd>{formatYen(year5.revenue)}</dd></div>
+            <div><dt>5年後目標</dt><dd>{formatYen(targetRevenue)}</dd></div>
+            <div><dt>営業CF</dt><dd>{formatYen(year5.cfo)}</dd></div>
+            <div><dt>従業員数</dt><dd>{Math.round(year5.fte)}名</dd></div>
+          </dl>
+          <button className="text-button" onClick={() => setScreen("gap")}>
+            目標達成の積み上げを見る <ArrowRight size={15} />
+          </button>
+        </section>
+      </div>
+
+      <section className="mvp-scope-panel">
+        <div>
+          <span className="section-kicker">MVP scope</span>
+          <h2>β版で約束する範囲</h2>
+          <p>入力負荷を抑え、計測可能なコア機能に限定します。</p>
+        </div>
+        <div className="scope-column">
+          <strong>INPUT</strong>
+          <div className="scope-tags">
+            <span>会社基本情報</span><span>過去3期財務</span>
+            <span>売上3セグメント</span><span>成長アサンプション</span>
+          </div>
+          <button className="text-button" onClick={() => setScreen("import")}>
+            財務データを取り込む <ArrowRight size={14} />
+          </button>
+        </div>
+        <div className="scope-column">
+          <strong>OUTPUT</strong>
+          <ul>
+            <li><Check size={14} /> 5年・10年の簡易財務予測</li>
+            <li><Check size={14} /> 資金ショート警告と危険度</li>
+            <li><Check size={14} /> 理想と現実のギャップ</li>
+          </ul>
+        </div>
+        <div className="scope-column out-scope">
+          <strong>NEXT PHASE</strong>
+          <ul>
+            <li>アニメ調コンサルUI</li>
+            <li>具体企業・M&amp;A候補の提示</li>
+            <li>インド企業リストの動的分析</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="india-bridge">
+        <div className="india-bridge-icon"><Globe2 size={24} /></div>
+        <div>
+          <span className="section-kicker">India module · MVP</span>
+          <h2>インド連動は「売上比率の感度分析」まで</h2>
+          <p>市場成長率レンジと注目セグメントを参考情報として提示し、個別企業紹介は相談CTAへ分離します。</p>
+        </div>
+        <button className="button diagnosis-secondary" onClick={() => setScreen("india")}>
+          India仮説を確認 <ArrowUpRight size={15} />
+        </button>
+      </section>
+
+      <p className="beta-disclaimer">
+        β版は経営判断を支援する試算ツールです。会計・税務・投資判断を代替するものではありません。
+        入力データの利用目的と保管期間は同意画面で明示します。
+      </p>
+      <span className="diagnosis-data-note">
+        基準値：売上 {formatYen(baseline.revenue)} · 現金 {formatYen(baseline.cash)} · {profile.baseYear}年度
+      </span>
     </div>
   );
 }

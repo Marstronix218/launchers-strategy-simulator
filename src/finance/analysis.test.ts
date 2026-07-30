@@ -6,6 +6,7 @@ import {
   sampleProfile,
 } from "../data/sample";
 import {
+  assessBusinessRisk,
   assessIndia,
   deriveStrategyActions,
   runSensitivity,
@@ -63,5 +64,49 @@ describe("strategy analysis", () => {
     );
     const dso = rows.find((row) => row.label === "回収サイト")!;
     expect(dso.minimumCashImpact).toBeLessThan(0);
+  });
+
+  it("ranks the three MVP risk indicators with explicit weights", () => {
+    const result = forecastScenario(
+      sampleBaseline,
+      defaultScenarios[0],
+      sampleProfile.baseYear,
+      10,
+    );
+    const assessment = assessBusinessRisk(result, 7_000_000_000);
+    expect(assessment.indicators.map((indicator) => indicator.id)).toEqual([
+      "cash",
+      "personnel",
+      "growth",
+    ]);
+    expect(
+      assessment.indicators.reduce(
+        (sum, indicator) => sum + indicator.weight,
+        0,
+      ),
+    ).toBe(1);
+    expect(assessment.score).toBeGreaterThanOrEqual(0);
+    expect(assessment.score).toBeLessThanOrEqual(100);
+  });
+
+  it("flags a cash shortfall as high risk", () => {
+    const result = forecastScenario(
+      { ...sampleBaseline, cash: 10_000_000 },
+      {
+        ...defaultScenarios[0],
+        drivers: {
+          ...defaultScenarios[0].drivers,
+          growthCapex: 1_000_000_000,
+          newBorrowing: 0,
+        },
+      },
+      sampleProfile.baseYear,
+      5,
+    );
+    const assessment = assessBusinessRisk(result, 7_000_000_000);
+    expect(
+      assessment.indicators.find((indicator) => indicator.id === "cash")?.level,
+    ).toBe("high");
+    expect(assessment.cashShortfallYear).not.toBeNull();
   });
 });
