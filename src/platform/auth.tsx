@@ -19,6 +19,7 @@ interface AuthContextValue {
   user: User | null;
   demoMode: boolean;
   continueAsDemo: () => void;
+  exitDemo: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -58,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       demoMode,
       continueAsDemo: () => setDemoMode(true),
+      exitDemo: () => setDemoMode(false),
       signOut: async () => {
         if (supabase) await supabase.auth.signOut();
         setDemoMode(false);
@@ -154,6 +156,11 @@ function AuthScreen() {
             財務三表、経営前提、シナリオ、意思決定履歴を、
             企業ごとに安全に管理します。
           </p>
+          <div className="auth-steps" aria-label="利用開始後の流れ">
+            <span><b>1</b> 会社情報を確認</span>
+            <span><b>2</b> 財務データを選択</span>
+            <span><b>3</b> 約5分で診断結果へ</span>
+          </div>
         </div>
         <div className="auth-trust">
           <span><ShieldCheck size={16} /> 組織単位のデータ分離</span>
@@ -225,7 +232,8 @@ function AuthScreen() {
               : "すでにアカウントをお持ちの方"}
           </button>
           <button className="auth-demo" onClick={auth.continueAsDemo}>
-            データを保存せず、デモとして確認する
+            <strong>まずはデモで試す</strong>
+            <span>登録なし・サンプルデータ・保存されません</span>
           </button>
         </div>
       </section>

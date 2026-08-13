@@ -6,6 +6,7 @@ import type {
   Scenario,
   ValidationIssue,
 } from "../types";
+import type { DataOrigin } from "../onboarding";
 import { requireSupabase } from "./supabase";
 
 export interface WorkspaceIdentity {
@@ -23,6 +24,7 @@ export interface StoredWorkspace extends WorkspaceIdentity {
   role?: string;
   goalTargets?: GoalTargets;
   indiaInputs?: IndiaInputs;
+  dataOrigin?: DataOrigin;
 }
 
 interface BootstrapResponse {
@@ -133,6 +135,11 @@ export async function loadOrCreateWorkspace(
         indiaInputs?: IndiaInputs;
       } | null
     )?.indiaInputs,
+    dataOrigin: (
+      projectResponse.data.settings as {
+        dataOrigin?: DataOrigin;
+      } | null
+    )?.dataOrigin,
     organizationName,
     role: membershipResponse.data.role,
   };
@@ -146,6 +153,7 @@ export async function saveWorkspace(
   selectedScenarioId: string,
   goalTargets: GoalTargets,
   indiaInputs: IndiaInputs,
+  dataOrigin: DataOrigin,
 ): Promise<{ savedAt: string; scenarioCount: number }> {
   const client = requireSupabase();
   const { data, error } = await client.rpc("save_workspace_snapshot", {
@@ -154,7 +162,7 @@ export async function saveWorkspace(
     p_baseline: baseline,
     p_selected_scenario_external_id: selectedScenarioId,
     p_scenarios: scenarios,
-    p_project_settings: { goalTargets, indiaInputs },
+    p_project_settings: { goalTargets, indiaInputs, dataOrigin },
   });
   if (error) throw error;
   const response = data as {

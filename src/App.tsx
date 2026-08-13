@@ -106,6 +106,14 @@ import {
   runAuthoritativeForecast,
 } from "./platform/api";
 import type { AIInsight, AIReviewMode } from "./ai/schema";
+import {
+  addCompletedStep,
+  onboardingStepIndex,
+  onboardingSteps,
+  validCompletedSteps,
+  type DataOrigin,
+  type OnboardingStepId,
+} from "./onboarding";
 
 type Screen =
   | "diagnosis"
@@ -338,6 +346,124 @@ function EmptyState({
   );
 }
 
+const onboardingStorageBaseKey = "launchers:onboarding:v1";
+
+function onboardingStorageKey(userId?: string): string {
+  return `${onboardingStorageBaseKey}:${userId ?? "demo"}`;
+}
+
+function readOnboardingProgress(storageKey: string): OnboardingStepId[] {
+  try {
+    return validCompletedSteps(JSON.parse(window.localStorage.getItem(storageKey) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+
+function OnboardingGuide({
+  screen,
+  completed,
+  hasImportedData,
+  importBlocked,
+  onStep,
+  onContinue,
+  onUseSample,
+  onClose,
+}: {
+  screen: Screen;
+  completed: readonly OnboardingStepId[];
+  hasImportedData: boolean;
+  importBlocked: boolean;
+  onStep: (screen: Screen) => void;
+  onContinue: () => void;
+  onUseSample: () => void;
+  onClose: () => void;
+}) {
+  const activeIndex = onboardingStepIndex(screen);
+  const completeCount = completed.length;
+  const currentStep = onboardingSteps[activeIndex];
+  const stepIcons = [Building2, Database, Settings2, BarChart3];
+  const continueLabels = [
+    screen === "diagnosis" ? "会社情報から始める" : "設定を確定して次へ",
+    hasImportedData ? "取込データで前提を確認" : "サンプルで前提を試す",
+    "前提を承認して結果を見る",
+    screen === "insights"
+      ? completeCount === onboardingSteps.length ? "ガイドを閉じる" : "オンボーディングを完了"
+      : "診断結果を見る",
+  ];
+  const continueDisabled = activeIndex === 1 && importBlocked;
+
+  return (
+    <section className="onboarding-guide" aria-label="はじめての方向け4ステップガイド">
+      <div className="onboarding-head">
+        <div>
+          <span className="section-kicker">Quick start · 約5分</span>
+          <h2>まずは4ステップで診断結果まで進みましょう</h2>
+          <p>必要な項目だけを順番に確認します。後からサイドメニューで詳しく調整できます。</p>
+        </div>
+        <div className="onboarding-progress-copy" aria-live="polite">
+          <strong>{completeCount} / {onboardingSteps.length}</strong>
+          <span>完了</span>
+        </div>
+        <button className="icon-button small" onClick={onClose} aria-label="はじめ方ガイドを閉じる">
+          <X size={16} />
+        </button>
+      </div>
+      <div
+        className="onboarding-progress"
+        role="progressbar"
+        aria-label="オンボーディング進捗"
+        aria-valuemin={0}
+        aria-valuemax={onboardingSteps.length}
+        aria-valuenow={completeCount}
+      >
+        <span style={{ width: `${(completeCount / onboardingSteps.length) * 100}%` }} />
+      </div>
+      <div className="onboarding-steps">
+        {onboardingSteps.map((step, index) => {
+          const Icon = stepIcons[index];
+          const isComplete = completed.includes(step.id);
+          const isActive = index === activeIndex;
+          return (
+            <button
+              key={step.id}
+              className={`onboarding-step ${isActive ? "active" : ""} ${isComplete ? "complete" : ""}`}
+              onClick={() => onStep(step.screen as Screen)}
+              aria-current={isActive ? "step" : undefined}
+            >
+              <span className="onboarding-step-icon">
+                {isComplete ? <Check size={17} /> : <Icon size={17} />}
+              </span>
+              <span>
+                <small>STEP {index + 1}</small>
+                <strong>{step.title}</strong>
+                <em>{step.description}</em>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="onboarding-next">
+        <div>
+          <span>現在地</span>
+          <strong>STEP {activeIndex + 1}：{currentStep.title}</strong>
+          {continueDisabled && <small>Excelのエラーを修正してから続けてください。</small>}
+        </div>
+        <div className="onboarding-next-actions">
+          {continueDisabled && (
+            <button className="button secondary" onClick={onUseSample}>
+              エラーを破棄してサンプルで続ける
+            </button>
+          )}
+          <button className="button primary" onClick={onContinue} disabled={continueDisabled}>
+            {continueLabels[activeIndex]} <ArrowRight size={16} />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const auth = useAuth();
   const [screen, setScreen] = useState<Screen>("diagnosis");
@@ -368,7 +494,33 @@ function App() {
   const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [aiError, setAiError] = useState("");
   const [aiMode, setAiMode] = useState<AIReviewMode>("executive_summary");
+  const [dataOrigin, setDataOrigin] = useState<DataOrigin>("sample");
+  const progressStorageKey = onboardingStorageKey(auth.user?.id);
+  const [completedOnboarding, setCompletedOnboarding] = useState<OnboardingStepId[]>(
+    () => readOnboardingProgress(progressStorageKey),
+  );
+  const [onboardingOpen, setOnboardingOpen] = useState(
+    () => readOnboardingProgress(progressStorageKey).length < onboardingSteps.length,
+  );
+  const progressScope = useRef(progressStorageKey);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (progressScope.current !== progressStorageKey) return;
+    try {
+      window.localStorage.setItem(progressStorageKey, JSON.stringify(completedOnboarding));
+    } catch {
+      // Progress persistence is optional; the guide still works for this session.
+    }
+  }, [completedOnboarding, progressStorageKey]);
+
+  useEffect(() => {
+    if (progressScope.current === progressStorageKey) return;
+    const storedProgress = readOnboardingProgress(progressStorageKey);
+    progressScope.current = progressStorageKey;
+    setCompletedOnboarding(storedProgress);
+    setOnboardingOpen(storedProgress.length < onboardingSteps.length);
+  }, [progressStorageKey]);
 
   useEffect(() => {
     if (!auth.session || auth.demoMode) {
@@ -388,6 +540,7 @@ function App() {
         setWorkspace(stored);
         setProfile(stored.profile ?? fallbackProfile);
         if (stored.baseline) setBaseline(stored.baseline);
+        setDataOrigin(stored.dataOrigin ?? "sample");
         if (stored.scenarios?.length) setScenarios(stored.scenarios);
         if (stored.selectedScenarioId) {
           setSelectedScenarioId(stored.selectedScenarioId);
@@ -476,6 +629,48 @@ function App() {
     setProfile((current) => ({ ...current, [key]: value }));
   }
 
+  function markOnboardingStep(step: OnboardingStepId) {
+    setCompletedOnboarding((current) => addCompletedStep(current, step));
+  }
+
+  function handleOnboardingContinue() {
+    const stepIndex = onboardingStepIndex(screen);
+    if (stepIndex === 0) {
+      if (screen === "diagnosis") {
+        setScreen("setup");
+        return;
+      }
+      markOnboardingStep("profile");
+      setScreen("import");
+      return;
+    }
+    if (stepIndex === 1) {
+      if (importIssues.some((issue) => issue.severity === "error")) return;
+      markOnboardingStep("data");
+      setScreen("assumptions");
+      return;
+    }
+    if (stepIndex === 2) {
+      approveScenario();
+      setScreen("insights");
+      return;
+    }
+    if (screen !== "insights") {
+      setScreen("insights");
+      return;
+    }
+    markOnboardingStep("results");
+    setOnboardingOpen(false);
+  }
+
+  function continueOnboardingWithSample() {
+    setImportIssues([]);
+    setBaseline(sampleBaseline);
+    setDataOrigin("sample");
+    markOnboardingStep("data");
+    setScreen("assumptions");
+  }
+
   function updateDriver(key: keyof CoreDrivers, value: number) {
     setScenarios((current) =>
       current.map((scenario) =>
@@ -509,6 +704,7 @@ function App() {
           : scenario,
       ),
     );
+    markOnboardingStep("assumptions");
   }
 
   function duplicateScenario(scenario: Scenario) {
@@ -534,6 +730,7 @@ function App() {
         selectedScenarioId,
         goalTargets,
         indiaInputs,
+        dataOrigin,
       );
       await runAuthoritativeForecast(auth.session.access_token, {
         projectId: workspace.projectId,
@@ -605,6 +802,8 @@ function App() {
       setImportIssues(issues);
       if (!issues.some((issue) => issue.severity === "error")) {
         setBaseline((current) => ({ ...current, ...baselinePatch }));
+        setDataOrigin("imported");
+        markOnboardingStep("data");
       }
       if (workspace && auth.session) {
         try {
@@ -686,9 +885,10 @@ function App() {
             className="consultant-chip"
             onClick={() => {
               if (auth.session) void auth.signOut();
+              else if (auth.configured) auth.exitDemo();
             }}
-            aria-label={auth.session ? "ログアウト" : "デモワークスペース"}
-            title={auth.session ? "ログアウト" : undefined}
+            aria-label={auth.session ? "ログアウト" : auth.configured ? "ログイン画面へ戻る" : "デモワークスペース"}
+            title={auth.session ? "ログアウト" : auth.configured ? "ログインして保存を有効にする" : undefined}
           >
             <span>{auth.user?.email?.slice(0, 2).toUpperCase() ?? "NL"}</span>
             <div>
@@ -749,8 +949,8 @@ function App() {
             <button
               className="button save-button"
               onClick={() => void handleCloudSave()}
-              disabled={cloudState === "saving" || cloudState === "loading"}
-              title={cloudMessage}
+              disabled={!auth.session || cloudState === "saving" || cloudState === "loading"}
+              title={!auth.session ? "ログインするとクラウド保存を利用できます" : cloudMessage}
             >
               <Save size={16} /> 保存
             </button>
@@ -784,6 +984,11 @@ function App() {
               <p>{title.description}</p>
             </div>
             <div className="heading-actions">
+              {!onboardingOpen && (
+                <button className="button secondary" onClick={() => setOnboardingOpen(true)}>
+                  <BookOpenCheck size={16} /> はじめ方
+                </button>
+              )}
               {(screen === "insights" || screen === "gap" || screen === "india") && (
                 <button
                   className="button ai-button"
@@ -818,6 +1023,19 @@ function App() {
             </div>
           </div>
 
+          {onboardingOpen && (
+            <OnboardingGuide
+              screen={screen}
+              completed={completedOnboarding}
+              hasImportedData={dataOrigin === "imported"}
+              importBlocked={importIssues.some((issue) => issue.severity === "error")}
+              onStep={setScreen}
+              onContinue={handleOnboardingContinue}
+              onUseSample={continueOnboardingWithSample}
+              onClose={() => setOnboardingOpen(false)}
+            />
+          )}
+
           {screen === "setup" && (
             <SetupScreen profile={profile} updateProfile={updateProfile} />
           )}
@@ -830,6 +1048,7 @@ function App() {
               result={asIsResult}
               risk={businessRisk}
               targetRevenue={goalTargets.year5Revenue}
+              hasImportedData={dataOrigin === "imported"}
               setScreen={setScreen}
             />
           )}
@@ -911,8 +1130,13 @@ function App() {
           <span>
             {cloudState === "error"
               ? cloudMessage
-              : "デモモード：数値はブラウザ内のみ。Supabase設定後は認証・保存・監査・AIが有効になります。"}
+              : "デモモード：サンプルや取込データは保存されません。"}
           </span>
+          {auth.demoMode && auth.configured && (
+            <button className="text-button" onClick={auth.exitDemo}>
+              ログインして保存を有効にする <ArrowRight size={14} />
+            </button>
+          )}
         </div>
       )}
       <AIReviewDrawer
@@ -1039,6 +1263,7 @@ function DiagnosisScreen({
   result,
   risk,
   targetRevenue,
+  hasImportedData,
   setScreen,
 }: {
   brand: Brand;
@@ -1048,6 +1273,7 @@ function DiagnosisScreen({
   result: ReturnType<typeof forecastScenario>;
   risk: ReturnType<typeof assessBusinessRisk>;
   targetRevenue: number;
+  hasImportedData: boolean;
   setScreen: (screen: Screen) => void;
 }) {
   const riskIcons = {
@@ -1080,15 +1306,27 @@ function DiagnosisScreen({
               </select>
             </label>
           </div>
+          <div className={`diagnosis-data-source ${hasImportedData ? "imported" : "sample"}`}>
+            {hasImportedData ? <BadgeCheck size={15} /> : <Info size={15} />}
+            <span>
+              <strong>{hasImportedData ? "自社データで表示中" : "サンプルデータで表示中"}</strong>
+              {hasImportedData
+                ? "取り込んだ財務データをもとに再計算しています。"
+                : "画面の流れを試せます。自社の診断結果にするには会社情報とExcelを設定してください。"}
+            </span>
+          </div>
           <span className="diagnosis-kicker">{brandLabels[brand].name} AI事業計画診断</span>
-          <h2>{profile.name}の<br />経営リスクを診断しました</h2>
+          <h2>
+            {hasImportedData ? profile.name : "サンプル企業"}の<br />
+            経営リスクを診断しました
+          </h2>
           <p>
             過去実績と承認済み前提から、将来の資金・人員・成長ギャップを
             同じ計算式で判定しています。
           </p>
           <div className="diagnosis-actions">
             <button className="button diagnosis-primary" onClick={() => setScreen("setup")}>
-              <ClipboardList size={16} /> 入力内容を確認
+              <ClipboardList size={16} /> 自社データで診断を始める
             </button>
             <button className="button diagnosis-secondary" onClick={() => setScreen("export")}>
               <FileOutput size={16} /> レポートを見る
