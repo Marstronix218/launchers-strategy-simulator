@@ -1,4 +1,32 @@
-# Launchers Strategy Simulator
+# Capital Launchers 企業価値簡易診断
+
+LINE登録後にスマートフォンから利用するPhase 0向けの簡易診断です。過去3期の売上高・営業利益・最終利益・現預金・減価償却費（万円）からCAGRを算出し、5年後・10年後の主要指標と簡易企業価値を即時表示します。ログインや会員登録は不要です。
+
+簡易企業価値は次の固定式で計算します。
+
+```text
+簡易EBITDA = 営業利益 + 減価償却費
+簡易企業価値 = 現預金 + 簡易EBITDA × 3
+```
+
+PRDで将来の変化率が定義されていない現預金と減価償却費は直近期の値で固定し、売上・営業利益・最終利益のみをCAGRで延伸します。CAGRが数学的に定義できないゼロ・赤字の始点を含む場合、その指標は直近期の値を据え置き、結果画面に「算定不可」と表示します。
+
+公式LINE CTAは `.env.local` の `VITE_LINE_OFFICIAL_URL` で設定します。URL内の `{message}` は、診断完了後の定型メッセージに置き換わります。
+
+```dotenv
+VITE_LINE_OFFICIAL_URL=https://line.me/R/oaMessage/YOUR_LINE_ID/?{message}
+```
+
+診断後のGPT経営示唆は、Vercel Function `/api/diagnosis-insight` からOpenAI Responses APIを呼び出します。APIキーはブラウザへ渡さず、`.env.local`（本番ではVercel Environment Variables）のサーバー専用変数として設定してください。
+
+```dotenv
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.6-sol
+```
+
+OpenAIへのリクエストは `store: false` で送信し、本アプリのデータベースにも診断値を保存しません。会社名はGPTへ送信せず、任意入力された業種と計算済みの診断数値だけを送信します。
+
+## 既存の戦略シミュレーター
 
 日本の中堅企業向けに、過去実績・事業ドライバー・経営目標をつなぎ、5年・10年の財務と戦略アクションを可視化する事業成長シミュレーターです。赤を基調とした管理画面に、Supabaseの認証・永続化・企業分離と、OpenAIによる経営レビューを統合しています。
 
@@ -24,7 +52,8 @@ Browser (React / Vite)
   ├─ Supabase private Storage
   └─ /api/*
        ├─ forecast.ts ─ deterministic finance engine ─ DB history
-       └─ ai.ts ─ OpenAI Responses API ─ AI suggestion history
+       ├─ ai.ts ─ authenticated OpenAI review ─ AI suggestion history
+       └─ diagnosis-insight.ts ─ anonymous diagnosis ─ OpenAI Responses API
 ```
 
 秘密鍵はブラウザへ渡しません。`SUPABASE_SECRET_KEY` と `OPENAI_API_KEY` はVercel Functionsだけが参照します。
@@ -39,7 +68,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-環境変数を設定しない場合もデモモードで起動できます。この場合、データ保存・認証・AIレビューは無効です。
+`npm run dev` はPhase 0画面とローカル用GPT APIを同時に起動します。`.env.local` の `OPENAI_API_KEY` はViteのブラウザ環境変数には変換せず、ローカルAPIのサーバープロセスだけが読み込みます。
+
+`OPENAI_API_KEY` を設定しない場合も確定計算の診断結果は表示できますが、GPT経営示唆は利用できません。
 
 ## Supabaseセットアップ
 

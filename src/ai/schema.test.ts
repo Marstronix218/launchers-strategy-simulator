@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DiagnosisInsightSchema } from "./diagnosisSchema";
 import { AIInsightSchema, AIReviewRequestSchema } from "./schema";
 
 describe("AI schemas", () => {
@@ -34,5 +35,19 @@ describe("AI schemas", () => {
         context: {},
       }),
     ).toThrow();
+  });
+});
+
+describe("DiagnosisInsightSchema", () => {
+  it("accepts the production diagnosis insight shape", () => {
+    expect(
+      DiagnosisInsightSchema.parse({
+        headline: "利益の縮小を先回りして確認する局面です",
+        analysis: "売上が伸びる一方で利益が縮小する試算になっています。",
+        focusPoints: ["粗利構造を確認する", "固定費の増加要因を確認する"],
+        consultationQuestion: "5年後に残したい利益水準はいくらですか？",
+        disclaimer: "本内容は簡易診断であり、専門家による確認が必要です。",
+      }).focusPoints,
+    ).toHaveLength(2);
   });
 });

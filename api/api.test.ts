@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import aiHandler from "./ai";
+import diagnosisInsightHandler from "./diagnosis-insight";
 import forecastHandler from "./forecast";
 import type { VercelRequest, VercelResponse } from "../server/types";
 
@@ -42,5 +43,27 @@ describe("Vercel API boundaries", () => {
     );
     expect(state.status).toBe(401);
     expect(state.body).toEqual({ error: "Authentication required." });
+  });
+
+  it("rejects non-POST anonymous diagnosis insight requests", async () => {
+    const { response, state } = createResponseRecorder();
+    await diagnosisInsightHandler(
+      { method: "GET", headers: {} } satisfies VercelRequest,
+      response,
+    );
+    expect(state.status).toBe(405);
+    expect(state.headers.Allow).toBe("POST");
+  });
+
+  it("validates anonymous diagnosis data before calling OpenAI", async () => {
+    const { response, state } = createResponseRecorder();
+    await diagnosisInsightHandler(
+      { method: "POST", headers: {}, body: {} } satisfies VercelRequest,
+      response,
+    );
+    expect(state.status).toBe(400);
+    expect(state.body).toMatchObject({
+      error: "診断データの形式が正しくありません。",
+    });
   });
 });
