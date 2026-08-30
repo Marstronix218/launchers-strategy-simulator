@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   EBITDA_MULTIPLE,
+  MONTE_CARLO_RUNS,
   calculateQuickDiagnosis,
   calculateTwoPeriodCagr,
+  simulateQuickDiagnosis,
   type DiagnosisFinancials,
 } from "./quickDiagnosis";
 
@@ -47,14 +49,18 @@ describe("calculateTwoPeriodCagr", () => {
 });
 
 describe("calculateQuickDiagnosis", () => {
-  it("extends the CAGR to 5 and 10 years", () => {
+  it("uses Monte Carlo medians for the 5-year and 10-year forecast", () => {
     const result = calculateQuickDiagnosis(financials);
 
     expect(result.growthRates.revenue).toBeCloseTo(Math.sqrt(2) - 1);
-    expect(result.projections[3].revenue).toBeCloseTo(
-      20_000 * Math.sqrt(2) ** 5,
+    expect(result.simulation.runs).toBe(MONTE_CARLO_RUNS);
+    expect(result.projections[3].revenue).toBe(
+      result.simulation.year5.revenue.p50,
     );
-    expect(result.projections[4].revenue).toBeCloseTo(640_000);
+    expect(result.projections[4].revenue).toBe(
+      result.simulation.year10.revenue.p50,
+    );
+    expect(result.projections[4].revenue).not.toBeCloseTo(640_000);
   });
 
   it("uses cash plus EBITDA times the fixed three-times multiple", () => {
@@ -70,6 +76,32 @@ describe("calculateQuickDiagnosis", () => {
     flat.twoYearsAgo.revenue = flat.latestYear.revenue;
     flat.twoYearsAgo.operatingProfit = flat.latestYear.operatingProfit;
 
-    expect(calculateQuickDiagnosis(flat).message).toContain("このままの延長線");
+    expect(calculateQuickDiagnosis(flat).message).toMatch(/10,000通り|10年後/);
+  });
+});
+
+describe("simulateQuickDiagnosis", () => {
+  it("is reproducible for auditability", () => {
+    expect(simulateQuickDiagnosis(financials, 1_000)).toEqual(
+      simulateQuickDiagnosis(financials, 1_000),
+    );
+  });
+
+  it("returns ordered uncertainty ranges and valid probabilities", () => {
+    const simulation = simulateQuickDiagnosis(financials, 2_000);
+
+    for (const horizon of [simulation.year5, simulation.year10]) {
+      for (const metric of Object.values(horizon)) {
+        expect(metric.p10).toBeLessThanOrEqual(metric.p50);
+        expect(metric.p50).toBeLessThanOrEqual(metric.p90);
+      }
+    }
+    expect(simulation.probabilityCompanyValueDeclines).toBeGreaterThanOrEqual(0);
+    expect(simulation.probabilityCompanyValueDeclines).toBeLessThanOrEqual(1);
+    expect(simulation.probabilityOperatingLoss).toBeGreaterThanOrEqual(0);
+    expect(simulation.probabilityOperatingLoss).toBeLessThanOrEqual(1);
+    expect(simulation.year10.companyValue.p90).toBeGreaterThan(
+      simulation.year10.companyValue.p10,
+    );
   });
 });

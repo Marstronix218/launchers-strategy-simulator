@@ -18,10 +18,10 @@ export async function requestDiagnosisInsight(
     model?: string;
   };
   if (!response.ok) {
-    throw new Error(payload.error ?? `GPT分析に失敗しました（${response.status}）。`);
+    throw new Error(payload.error ?? `AI分析に失敗しました（${response.status}）。`);
   }
   return {
     insight: DiagnosisInsightSchema.parse(payload.insight),
-    model: payload.model ?? "OpenAI",
+    model: payload.model ?? "AI",
   };
 }

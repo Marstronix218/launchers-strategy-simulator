@@ -17,14 +17,17 @@ const requestWindows = new Map<string, { count: number; resetsAt: number }>();
 
 const SYSTEM_PROMPT = `あなたは日本の中堅・中小企業オーナーを支援する経営アナリストです。
 
-提供された数値は、過去3期のCAGRを機械的に5年後・10年後へ延伸した簡易診断結果です。
+提供された数値は、過去3期から推定した傾向と不確実性を使い、10,000通りの将来経路を計算したモンテカルロ簡易診断結果です。
 計算済みの数値を変更・再計算せず、経営者が次の面談で確認すべき論点へ変換してください。
 
 必須条件:
-- 日本語で簡潔に書く
+- すべて日本語で簡潔に書き、英単語・英文見出し・英字略語を使わない（「AI」のみ使用可）
 - 事実と提案を分ける
 - 入力にない市場データ、企業情報、原因を作らない
+- 下位10%値・中央値・上位10%値と確率は幅のある予測として扱い、確定値と表現しない
 - 危機感を煽りすぎず、具体的な問いを残す
+- 確認項目は重複しない3項目とし、各項目は90文字以内にする
+- 同じ文字・語句・文を繰り返さない
 - 金額は1万円単位に四捨五入し、3桁カンマ付きの整数で書く（例: 63,537万円）
 - 金額に小数点以下を表示しない
 - 成長率は小数第1位までのパーセントで書く
@@ -92,7 +95,7 @@ export default async function handler(
     const apiKey = process.env.OPENAI_API_KEY?.trim();
     if (!apiKey) {
       return response.status(503).json({
-        error: "GPT分析がサーバーで設定されていません。",
+        error: "AI分析がサーバーで設定されていません。",
       });
     }
 
@@ -104,7 +107,7 @@ export default async function handler(
       max_output_tokens: 1000,
       safety_identifier: identity,
       instructions: SYSTEM_PROMPT,
-      input: `以下の整形済み簡易診断結果を分析してください。数値を再計算せず、表記も維持してください。\n${formatDiagnosisPromptInput(input)}`,
+      input: `以下の整形済み簡易診断結果を分析してください。数値を再計算せず、日本語表記を維持してください。\n${formatDiagnosisPromptInput(input)}`,
       text: {
         format: zodTextFormat(DiagnosisInsightSchema, "diagnosis_insight"),
       },
@@ -112,7 +115,7 @@ export default async function handler(
     const parsedInsight = result.output_parsed;
     if (!parsedInsight) {
       return response.status(502).json({
-        error: "GPTの回答を診断結果として読み取れませんでした。",
+        error: "AIの回答を診断結果として読み取れませんでした。",
       });
     }
     const insight = normalizeDiagnosisInsight(parsedInsight);
@@ -131,7 +134,7 @@ export default async function handler(
     }
     console.error("Diagnosis insight endpoint failed", caught);
     return response.status(500).json({
-      error: "GPT分析を完了できませんでした。しばらくしてから再度お試しください。",
+      error: "AI分析を完了できませんでした。しばらくしてから再度お試しください。",
     });
   }
 }

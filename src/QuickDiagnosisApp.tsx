@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import {
   EBITDA_MULTIPLE,
+  MONTE_CARLO_RUNS,
   calculateQuickDiagnosis,
   type DiagnosisFinancials,
   type DiagnosisMetric,
@@ -154,7 +155,6 @@ export default function QuickDiagnosisApp() {
   const [result, setResult] = useState<QuickDiagnosisResult | null>(null);
   const [error, setError] = useState("");
   const [aiInsight, setAiInsight] = useState<DiagnosisInsight | null>(null);
-  const [aiModel, setAiModel] = useState("");
   const [aiState, setAiState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [aiError, setAiError] = useState("");
   const lineUrl = useMemo(() => buildLineUrl(companyName), [companyName]);
@@ -199,14 +199,22 @@ export default function QuickDiagnosisApp() {
           netIncome: year10.netIncome,
         },
       },
+      simulation: {
+        runs: calculated.simulation.runs,
+        year5CompanyValue: calculated.simulation.year5.companyValue,
+        year10CompanyValue: calculated.simulation.year10.companyValue,
+        probabilityCompanyValueDeclines:
+          calculated.simulation.probabilityCompanyValueDeclines,
+        probabilityOperatingLoss:
+          calculated.simulation.probabilityOperatingLoss,
+      },
     })
-      .then(({ insight, model }) => {
+      .then(({ insight }) => {
         setAiInsight(insight);
-        setAiModel(model);
         setAiState("ready");
       })
       .catch((caught) => {
-        setAiError(caught instanceof Error ? caught.message : "GPT分析に失敗しました。");
+        setAiError(caught instanceof Error ? caught.message : "AI分析に失敗しました。");
         setAiState("error");
       });
   }
@@ -255,11 +263,11 @@ export default function QuickDiagnosisApp() {
           <section className="result-hero">
             <div>
               <span className="quick-kicker"><Sparkles size={14} /> 診断結果</span>
-              <h1>{companyName || "御社"}の10年後を<br />簡易予測しました</h1>
-              <p>過去3期の傾向をそのまま延伸した場合の試算です。</p>
+              <h1>{companyName || "御社"}の10年後を<br />確率予測しました</h1>
+              <p>入力した3期の実績から、10,000通りの将来経路を計算した結果です。</p>
             </div>
             <div className="value-highlight">
-              <span>10年後の簡易企業価値</span>
+              <span>10年後の簡易企業価値・中央値</span>
               <strong>{formatManYen(result.companyValues[2].value)}</strong>
               <small>
                 現在比 {result.year10ValueRatio === null
@@ -272,8 +280,38 @@ export default function QuickDiagnosisApp() {
           <section className="alarm-message">
             <span><TrendingUp size={20} /></span>
             <div>
-              <small>10 YEARS FROM NOW</small>
+              <small>10年後の見通し</small>
               <h2>{result.message}</h2>
+            </div>
+          </section>
+
+          <section className="simulation-panel" aria-label="モンテカルロ・シミュレーション結果">
+            <div className="simulation-heading">
+              <div>
+                <span className="quick-kicker">確率シミュレーション</span>
+                <h2>{numberFormatter.format(result.simulation.runs)}回の確率シミュレーション</h2>
+              </div>
+              <small>AI不使用・同じ入力なら同じ結果</small>
+            </div>
+            <div className="simulation-grid">
+              <SimulationRangeCard
+                label="5年後の簡易企業価値"
+                range={result.simulation.year5.companyValue}
+              />
+              <SimulationRangeCard
+                label="10年後の簡易企業価値"
+                range={result.simulation.year10.companyValue}
+              />
+              <article className="probability-card">
+                <span>10年後に現在価値を下回る確率</span>
+                <strong>{formatProbability(result.simulation.probabilityCompanyValueDeclines)}</strong>
+                <small>10,000経路のうち、現在の簡易企業価値未満となった割合</small>
+              </article>
+              <article className="probability-card">
+                <span>10年以内に営業赤字となる確率</span>
+                <strong>{formatProbability(result.simulation.probabilityOperatingLoss)}</strong>
+                <small>少なくとも1期、営業利益がマイナスとなった割合</small>
+              </article>
             </div>
           </section>
 
@@ -281,10 +319,10 @@ export default function QuickDiagnosisApp() {
             <div className="gpt-insight-heading">
               <span className="gpt-mark"><Sparkles size={19} /></span>
               <div>
-                <span className="quick-kicker">OPENAI ANALYSIS</span>
-                <h2>GPTによる経営示唆</h2>
+                <span className="quick-kicker">AIによる分析</span>
+                <h2>AIによる経営示唆</h2>
               </div>
-              {aiModel && <small>{aiModel}</small>}
+              <small>AI</small>
             </div>
             {aiState === "loading" && (
               <div className="gpt-loading">
@@ -294,7 +332,7 @@ export default function QuickDiagnosisApp() {
             )}
             {aiState === "error" && (
               <div className="gpt-error">
-                <strong>GPT分析を表示できませんでした</strong>
+                <strong>AI分析を表示できませんでした</strong>
                 <span>{aiError}</span>
                 <button type="button" onClick={() => loadAiInsight(result)}>再試行する</button>
               </div>
@@ -319,7 +357,7 @@ export default function QuickDiagnosisApp() {
             <GrowthCard label="営業利益" value={result.growthRates.operatingProfit} />
             <GrowthCard label="最終利益" value={result.growthRates.netIncome} />
             <article className="growth-card ebitda-card">
-              <span>直近期 簡易EBITDA</span>
+              <span>直近期 簡易キャッシュ創出力</span>
               <strong>{formatManYen(result.currentEbitda)}</strong>
               <small>営業利益＋減価償却費</small>
             </article>
@@ -329,10 +367,10 @@ export default function QuickDiagnosisApp() {
             <article className="quick-panel wide-chart">
               <div className="quick-panel-heading">
                 <div>
-                  <span className="quick-kicker"><LineChartIcon size={14} /> TREND</span>
+                  <span className="quick-kicker"><LineChartIcon size={14} /> 業績推移</span>
                   <h2>主要3指標の推移</h2>
                 </div>
-                <small>単位：万円</small>
+                <small>予測値はシミュレーション中央値・単位：万円</small>
               </div>
               <ResponsiveContainer width="100%" height={310}>
                 <LineChart data={result.projections} margin={{ left: 8, right: 12, top: 10 }}>
@@ -356,7 +394,7 @@ export default function QuickDiagnosisApp() {
             <article className="quick-panel value-chart">
               <div className="quick-panel-heading">
                 <div>
-                  <span className="quick-kicker"><Building2 size={14} /> VALUE</span>
+                  <span className="quick-kicker"><Building2 size={14} /> 企業価値</span>
                   <h2>簡易企業価値</h2>
                 </div>
                 <small>単位：万円</small>
@@ -381,12 +419,15 @@ export default function QuickDiagnosisApp() {
           <section className="formula-note">
             <strong>今回の計算方法</strong>
             <span>簡易企業価値 ＝ 現預金 ＋（営業利益 ＋ 減価償却費）× {EBITDA_MULTIPLE}倍</span>
-            <small>現預金と減価償却費は直近期の値で固定し、利益のCAGRのみを延伸しています。</small>
+            <small>
+              過去3期から売上成長率・利益率・減価償却率・現金転換率を推定し、最低限の不確実性を加えて
+              {numberFormatter.format(MONTE_CARLO_RUNS)}経路を計算。表示範囲は結果の中央80%です。
+            </small>
           </section>
 
           <section className="consultation-cta">
             <div>
-              <span className="quick-kicker">NEXT STEP</span>
+              <span className="quick-kicker">次のステップ</span>
               <h2>「なりたい10年後」との差を、<br />一緒に整理しませんか？</h2>
               <p>
                 無料面談では、数字の背景と次の市場も含めて確認します。<br />Goだけでなく、No-Goも大切な経営判断です。
@@ -435,7 +476,7 @@ export default function QuickDiagnosisApp() {
         <section className="input-intro" id="diagnosis-form">
           <span className="step-number">01</span>
           <div>
-            <span className="quick-kicker">ABOUT YOUR COMPANY</span>
+            <span className="quick-kicker">会社情報</span>
             <h2>まず、会社について教えてください</h2>
             <p>会社名・業種は未入力でも診断できます。</p>
           </div>
@@ -465,7 +506,7 @@ export default function QuickDiagnosisApp() {
           <section className="input-intro finance-intro">
             <span className="step-number">02</span>
             <div>
-              <span className="quick-kicker">FINANCIAL INPUT</span>
+              <span className="quick-kicker">財務情報入力</span>
               <h2>過去3期の数字を入力してください</h2>
               <p>すべて万円単位。おおよその数字で構いません。</p>
             </div>
@@ -517,7 +558,7 @@ export default function QuickDiagnosisApp() {
             <LockKeyhole size={19} />
             <div>
               <strong>入力内容はご相談対応のためにのみ使用します</strong>
-              <span>ログイン不要。財務数値は診断計算とGPT分析のために送信しますが、本アプリのデータベースには保存しません。</span>
+              <span>ログイン不要。財務数値は診断計算とAI分析のために送信しますが、本アプリのデータベースには保存しません。</span>
             </div>
           </div>
 
@@ -530,7 +571,7 @@ export default function QuickDiagnosisApp() {
       </main>
       <footer className="quick-footer">
         <div><span className="quick-logo-mark">L</span><strong>CAPITAL LAUNCHERS</strong></div>
-        <span><ShieldCheck size={15} /> India Go / No-Go Support</span>
+        <span><ShieldCheck size={15} /> インド進出判断支援</span>
       </footer>
     </div>
   );
@@ -541,7 +582,7 @@ function QuickHeader({ compact = false }: { compact?: boolean }) {
     <header className={`quick-header ${compact ? "compact" : ""}`}>
       <a className="quick-logo" href="/" aria-label="Capital Launchers トップ">
         <span className="quick-logo-mark">L</span>
-        <span><strong>CAPITAL LAUNCHERS</strong><small>INDIA GO / NO-GO SUPPORT</small></span>
+        <span><strong>CAPITAL LAUNCHERS</strong><small>インド進出判断支援</small></span>
       </a>
       <span className="header-label">企業価値簡易診断</span>
     </header>
@@ -552,9 +593,33 @@ function GrowthCard({ label, value }: { label: string; value: number | null }) {
   const tone = value === null ? "unknown" : value > 0.005 ? "positive" : value < -0.005 ? "negative" : "flat";
   return (
     <article className={`growth-card ${tone}`}>
-      <span>{label} CAGR</span>
+      <span>{label}の年平均成長率</span>
       <strong>{formatRate(value)}</strong>
       <small>前々期から直近期まで</small>
+    </article>
+  );
+}
+
+function formatProbability(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function SimulationRangeCard({
+  label,
+  range,
+}: {
+  label: string;
+  range: { p10: number; p50: number; p90: number };
+}) {
+  return (
+    <article className="simulation-range-card">
+      <span>{label}</span>
+      <strong>{formatManYen(range.p50)}</strong>
+      <div>
+        <small>下位10%値 {formatManYen(range.p10)}</small>
+        <i aria-hidden="true" />
+        <small>上位10%値 {formatManYen(range.p90)}</small>
+      </div>
     </article>
   );
 }

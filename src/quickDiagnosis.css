@@ -364,6 +364,23 @@ input:focus-visible {
 .alarm-message small { color: #9a7547; font-size: 9px; font-weight: 700; letter-spacing: 0.15em; }
 .alarm-message h2 { margin: 5px 0 0; color: #624c31; font-size: 18px; line-height: 1.65; }
 
+.simulation-panel { margin: 0 0 22px; padding: 27px 30px; background: #fffdfb; border: 1px solid #dfcecf; border-radius: 15px; box-shadow: 0 8px 28px rgba(64, 35, 39, 0.05); }
+.simulation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.simulation-heading h2 { margin: 5px 0 0; font-size: 19px; }
+.simulation-heading > small { color: #897a7c; font-size: 9px; text-align: right; }
+.simulation-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
+.simulation-range-card,
+.probability-card { min-width: 0; padding: 17px; background: #f8f3f1; border: 1px solid #eadfe0; border-radius: 11px; }
+.simulation-range-card > span,
+.probability-card > span { display: block; min-height: 28px; color: var(--muted); font-size: 9px; font-weight: 700; line-height: 1.5; }
+.simulation-range-card > strong,
+.probability-card > strong { display: block; margin: 7px 0; color: var(--deep-red); font-family: Georgia, "Noto Sans JP", serif; font-size: 18px; }
+.simulation-range-card > div { display: flex; align-items: center; gap: 7px; }
+.simulation-range-card i { height: 3px; flex: 1; background: linear-gradient(90deg, #d8b9bf, var(--brand-red)); border-radius: 999px; }
+.simulation-range-card small,
+.probability-card small { color: #8f8183; font-size: 8px; line-height: 1.45; }
+.probability-card > strong { font-size: 25px; }
+
 .gpt-insight-panel {
   margin: 0 0 22px;
   padding: 27px 30px;
@@ -433,6 +450,7 @@ input:focus-visible {
   .result-hero { grid-template-columns: 1fr; }
   .value-highlight { min-width: 0; }
   .growth-grid { grid-template-columns: repeat(2, 1fr); }
+  .simulation-grid { grid-template-columns: repeat(2, 1fr); }
   .gpt-focus-grid { grid-template-columns: 1fr; }
   .chart-grid { grid-template-columns: 1fr; }
   .consultation-cta { grid-template-columns: 1fr; }
@@ -465,6 +483,10 @@ input:focus-visible {
   .value-highlight strong { font-size: 23px; }
   .alarm-message { padding: 20px; }
   .alarm-message h2 { font-size: 15px; }
+  .simulation-panel { padding: 22px 18px; }
+  .simulation-heading { flex-direction: column; gap: 7px; }
+  .simulation-heading > small { text-align: left; }
+  .simulation-grid { grid-template-columns: 1fr; }
   .gpt-insight-panel { padding: 22px 18px; }
   .gpt-insight-heading { align-items: flex-start; }
   .gpt-insight-heading > small { max-width: 90px; overflow-wrap: anywhere; text-align: right; }
