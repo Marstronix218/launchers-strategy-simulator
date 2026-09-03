@@ -15,6 +15,16 @@ export type DiagnosisFinancials = Record<
   Record<DiagnosisMetric, number>
 >;
 
+export type PerformanceRating = 1 | 2 | 3 | 4 | 5;
+
+export const PERFORMANCE_RATING_RATES: Record<PerformanceRating, number> = {
+  1: -0.15,
+  2: -0.07,
+  3: 0,
+  4: 0.07,
+  5: 0.15,
+};
+
 export interface DiagnosisProjectionPoint {
   label: string;
   revenue: number;
@@ -61,6 +71,30 @@ export interface QuickDiagnosisResult {
 }
 
 const GROWTH_METRICS = ["revenue", "operatingProfit", "netIncome"] as const;
+
+/**
+ * 直近期の全指標に業績評価ごとの同一成長率を適用し、前期・前々期を逆算する。
+ * 入力値は万円単位を想定し、自動計算した各期の値を万円整数に丸める。
+ */
+export function backcastFinancials(
+  latestYear: DiagnosisFinancials["latestYear"],
+  performanceRating: PerformanceRating,
+): DiagnosisFinancials {
+  const growthFactor = 1 + PERFORMANCE_RATING_RATES[performanceRating];
+  const periodsAgo = (periods: number): DiagnosisFinancials["latestYear"] =>
+    Object.fromEntries(
+      (Object.keys(latestYear) as DiagnosisMetric[]).map((metric) => [
+        metric,
+        Math.round(latestYear[metric] / growthFactor ** periods),
+      ]),
+    ) as DiagnosisFinancials["latestYear"];
+
+  return {
+    twoYearsAgo: periodsAgo(2),
+    previousYear: periodsAgo(1),
+    latestYear: { ...latestYear },
+  };
+}
 
 /**
  * PRDの「直近期 ÷ 前々期」の2期間CAGR。
@@ -404,7 +438,7 @@ export function calculateQuickDiagnosis(
   } else if (simulation.probabilityCompanyValueDeclines >= 0.4) {
     message = `10,000通りの試算のうち、${Math.round(simulation.probabilityCompanyValueDeclines * 100)}%で10年後の企業価値が現在を下回りました。`;
   } else {
-    message = `10年後の企業価値は、中央値${Math.round(year10Value / 100).toLocaleString("ja-JP")}百万円。結果の幅を生む前提を確認することが重要です。`;
+    message = "10年後の企業価値は現在を上回る経路が多い試算です。結果の幅を生む前提を確認することが重要です。";
   }
 
   return {

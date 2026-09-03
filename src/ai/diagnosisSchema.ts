@@ -8,8 +8,53 @@ const simulationRange = z.object({
   p90: finiteFinancialNumber,
 });
 
+export const CapitalRangeSchema = z.enum([
+  "300万円未満",
+  "300万〜1,000万円",
+  "1,000万〜3,000万円",
+  "3,000万〜1億円",
+  "1億円以上",
+]);
+
+export const RevenueRangeSchema = z.enum([
+  "1億円未満",
+  "1億〜3億円",
+  "3億〜10億円",
+  "10億〜30億円",
+  "30億円以上",
+]);
+
+const qualitativeChoice = z.enum(["はい", "いいえ", "わからない"]);
+const financialSource = z.enum(["user", "derived", "edited"]);
+const sourcedFinancialNumber = z.object({
+  value: finiteFinancialNumber,
+  source: financialSource,
+});
+const historicalPeriod = z.object({
+  revenue: sourcedFinancialNumber,
+  operatingProfit: sourcedFinancialNumber,
+  netIncome: sourcedFinancialNumber,
+  cash: sourcedFinancialNumber,
+  depreciation: sourcedFinancialNumber,
+});
+
 export const DiagnosisInsightRequestSchema = z.object({
   industry: z.string().trim().max(100).optional().default(""),
+  capitalRange: z.union([CapitalRangeSchema, z.literal("")]).optional().default(""),
+  revenueRange: z.union([RevenueRangeSchema, z.literal("")]).optional().default(""),
+  performanceRating: z.number().int().min(1).max(5),
+  qualitativeAnswers: z.object({
+    q1: qualitativeChoice.optional(),
+    q2: qualitativeChoice.optional(),
+    q3: qualitativeChoice.optional(),
+    q4: qualitativeChoice.optional(),
+    q5: z.string().trim().max(500).optional(),
+  }),
+  historicalFinancials: z.object({
+    twoYearsAgo: historicalPeriod,
+    previousYear: historicalPeriod,
+    latestYear: historicalPeriod,
+  }),
   growthRates: z.object({
     revenue: growthRate,
     operatingProfit: growthRate,
@@ -48,13 +93,14 @@ export const DiagnosisInsightRequestSchema = z.object({
 });
 
 export const DiagnosisInsightSchema = z.object({
-  headline: z.string().min(1).max(80).describe("日本語のみの簡潔な見出し"),
-  analysis: z.string().min(1).max(450).describe("日本語のみの事実と提案"),
-  focusPoints: z
-    .array(z.string().min(8).max(90).describe("日本語のみの確認項目。番号は付けない"))
-    .length(3),
-  consultationQuestion: z.string().min(1).max(150).describe("日本語のみの具体的な質問"),
-  disclaimer: z.string().min(1).max(180).describe("日本語のみの注意事項"),
+  feedback: z.string().min(1).max(450).describe("日本語のみの簡潔なフィードバック"),
+  risks: z
+    .array(z.string().min(8).max(150).describe("日本語のみの具体的なリスク。番号は付けない"))
+    .min(1)
+    .max(3),
+  summary: z.string().min(1).max(450).describe("日本語のみの総評"),
+  rating: z.number().int().min(1).max(5).describe("経営状況の5段階評価"),
+  ratingRationale: z.string().min(1).max(220).describe("日本語のみの評価理由"),
 });
 
 export type DiagnosisInsightRequest = z.infer<typeof DiagnosisInsightRequestSchema>;

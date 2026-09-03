@@ -40,18 +40,17 @@ describe("AI schemas", () => {
 
 describe("DiagnosisInsightSchema", () => {
   it("accepts the production diagnosis insight shape", () => {
-    expect(
-      DiagnosisInsightSchema.parse({
-        headline: "利益の縮小を先回りして確認する局面です",
-        analysis: "売上が伸びる一方で利益が縮小する試算になっています。",
-        focusPoints: [
-          "粗利構造を確認する",
-          "固定費の増加要因を確認する",
-          "資金繰りへの影響を確認する",
-        ],
-        consultationQuestion: "5年後に残したい利益水準はいくらですか？",
-        disclaimer: "本内容は簡易診断であり、専門家による確認が必要です。",
-      }).focusPoints,
-    ).toHaveLength(3);
+    const insight = DiagnosisInsightSchema.parse({
+      feedback: "売上が伸びる一方で利益が縮小する試算になっています。",
+      risks: [
+        "粗利構造が改善しない場合、利益率がさらに低下する可能性があります。",
+        "成長に必要な運転資金が現預金を圧迫する可能性があります。",
+      ],
+      summary: "成長投資と収益性の両立条件を具体化する局面です。",
+      rating: 3,
+      ratingRationale: "売上成長の余地と利益低下のリスクが併存しているためです。",
+    });
+    expect(insight.risks).toHaveLength(2);
+    expect(insight.rating).toBe(3);
   });
 });

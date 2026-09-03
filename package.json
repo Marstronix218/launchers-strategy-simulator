@@ -4,6 +4,9 @@
   "private": true,
   "description": "Deterministic 5-year and 10-year financial strategy simulator for Japanese mid-sized companies.",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

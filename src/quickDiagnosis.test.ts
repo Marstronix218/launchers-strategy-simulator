@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   EBITDA_MULTIPLE,
   MONTE_CARLO_RUNS,
+  PERFORMANCE_RATING_RATES,
+  backcastFinancials,
   calculateQuickDiagnosis,
   calculateTwoPeriodCagr,
   simulateQuickDiagnosis,
@@ -31,6 +33,56 @@ const financials: DiagnosisFinancials = {
     depreciation: 300,
   },
 };
+
+describe("backcastFinancials", () => {
+  const latestYear: DiagnosisFinancials["latestYear"] = {
+    revenue: 10_000,
+    operatingProfit: 1_000,
+    netIncome: 500,
+    cash: 2_000,
+    depreciation: 200,
+  };
+
+  it.each([
+    [1, -0.15],
+    [2, -0.07],
+    [3, 0],
+    [4, 0.07],
+    [5, 0.15],
+  ] as const)("uses rating %i as a %d growth rate", (rating, rate) => {
+    const result = backcastFinancials(latestYear, rating);
+
+    expect(PERFORMANCE_RATING_RATES[rating]).toBe(rate);
+    expect(result.previousYear.revenue).toBe(
+      Math.round(latestYear.revenue / (1 + rate)),
+    );
+    expect(result.twoYearsAgo.revenue).toBe(
+      Math.round(latestYear.revenue / (1 + rate) ** 2),
+    );
+    expect(result.latestYear).toEqual(latestYear);
+  });
+
+  it("backcasts negative profit values without changing their sign", () => {
+    const result = backcastFinancials(
+      { ...latestYear, operatingProfit: -1_000, netIncome: -333 },
+      5,
+    );
+
+    expect(result.previousYear.operatingProfit).toBe(-870);
+    expect(result.twoYearsAgo.operatingProfit).toBe(-756);
+    expect(result.previousYear.netIncome).toBe(-290);
+    expect(result.twoYearsAgo.netIncome).toBe(-252);
+  });
+
+  it("returns deterministic values and does not retain the input object", () => {
+    const first = backcastFinancials(latestYear, 4);
+    const second = backcastFinancials(latestYear, 4);
+
+    expect(first).toEqual(second);
+    expect(first).not.toBe(second);
+    expect(first.latestYear).not.toBe(latestYear);
+  });
+});
 
 describe("calculateTwoPeriodCagr", () => {
   it("calculates CAGR from three fiscal years (two periods)", () => {
